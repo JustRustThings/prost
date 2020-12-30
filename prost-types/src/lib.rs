@@ -395,6 +395,36 @@ impl std::hash::Hash for Timestamp {
     }
 }
 
+#[cfg(feature = "time-conversions")]
+impl From<::time::OffsetDateTime> for Timestamp {
+    fn from(dt: ::time::OffsetDateTime) -> Self {
+        // The UNIX timestamp is relative to UTC by definition, the time crate respects this.
+        let seconds = dt.unix_timestamp();
+        // `.nanoseconds()` guarantees a return value in 0 .. 1_000_000_000 and so will
+        // always fit in an `i32`.
+        let nanos = dt.nanosecond() as i32;
+        Self { seconds, nanos }
+    }
+}
+
+#[cfg(feature = "time-conversions")]
+impl From<Timestamp> for ::time::OffsetDateTime {
+    fn from(ts: Timestamp) -> Self {
+        // If the std feature is present, normalize the timestamp for added safety
+        #[cfg(feature = "std")]
+        let ts = {
+            let mut ts = ts;
+            ts.normalize();
+            ts
+        };
+
+        let ts = ts.seconds as i128 * 1_000_000_000 + ts.nanos as i128;
+        // This cannot fail since the passed value is supposed to be a
+        // valid UTC timestamp itself.
+        ::time::OffsetDateTime::from_unix_timestamp_nanos(ts).unwrap()
+    }
+}
+
 #[cfg(feature = "std")]
 impl From<std::time::SystemTime> for Timestamp {
     fn from(system_time: std::time::SystemTime) -> Timestamp {
@@ -906,5 +936,43 @@ mod tests {
 
         // Must contain at least one "/" character.
         assert_eq!(TypeUrl::new("google.protobuf.Duration"), None);
+    }
+
+    #[cfg(feature = "time-conversions")]
+    mod time_crate {
+        use super::*;
+        use time::macros::datetime;
+
+        #[test]
+        fn test_datetime_to_timestamp() {
+            // With UTC date
+            let dt = datetime!(2014-07-08 9:10:11.000_000_012 UTC);
+            let ts: Timestamp = dt.into();
+            let expected = Timestamp {
+                seconds: 1404810611,
+                nanos: 12,
+            };
+            assert_eq!(ts, expected);
+
+            // With non-UTC date
+            let dt = datetime!(2014-07-08 9:10:11 +06);
+            let ts: Timestamp = dt.into();
+            let expected = Timestamp {
+                seconds: 1404810611 - 6 * 3600,
+                nanos: 0,
+            };
+            assert_eq!(ts, expected);
+        }
+
+        #[test]
+        fn test_timestamp_to_datetime() {
+            let ts = Timestamp {
+                seconds: 1404810611,
+                nanos: 12,
+            };
+            let dt: ::time::OffsetDateTime = ts.into();
+            let expected = datetime!(2014-07-08 9:10:11.000_000_012 UTC);
+            assert_eq!(dt, expected);
+        }
     }
 }
