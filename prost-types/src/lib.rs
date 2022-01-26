@@ -179,23 +179,33 @@ impl std::hash::Hash for Timestamp {
     }
 }
 
-/// Converts a `chrono::DateTime` to a `Timestamp`.
-#[cfg(feature = "chrono-conversions")]
-impl<Tz: chrono::TimeZone> From<chrono::DateTime<Tz>> for Timestamp {
-    fn from(dt: chrono::DateTime<Tz>) -> Self {
-        Self{
-            seconds: dt.timestamp() as _,
-            nanos: dt.timestamp_subsec_nanos() as _,
-        }
+#[cfg(feature = "time-conversions")]
+impl From<::time::OffsetDateTime> for Timestamp {
+    fn from(dt: ::time::OffsetDateTime) -> Self {
+        // The UNIX timestamp is relative to UTC by definition, the time crate respects this.
+        let seconds = dt.unix_timestamp();
+        // `.nanoseconds()` guarantees a return value in 0 .. 1_000_000_000 and so will
+        // always fit in an `i32`.
+        let nanos = dt.nanosecond() as i32;
+        Self { seconds, nanos }
     }
 }
 
-/// Converts a `Timestamp` to a `chrono::DateTime`.
-#[cfg(feature = "chrono-conversions")]
-impl Into<chrono::DateTime<chrono::Utc>> for Timestamp {
-    fn into(self) -> chrono::DateTime<chrono::Utc> {
-        use chrono::TimeZone;
-        chrono::Utc.timestamp(self.seconds, self.nanos as _)
+#[cfg(feature = "time-conversions")]
+impl From<Timestamp> for ::time::OffsetDateTime {
+    fn from(ts: Timestamp) -> Self {
+        // If the std feature is present, normalize the timestamp for added safety
+        #[cfg(feature = "std")]
+        let ts = {
+            let mut ts = ts;
+            ts.normalize();
+            ts
+        };
+
+        let ts = ts.seconds as i128 * 1_000_000_000 + ts.nanos as i128;
+        // This cannot fail since the passed value is supposed to be a
+        // valid UTC timestamp itself.
+        ::time::OffsetDateTime::from_unix_timestamp_nanos(ts).unwrap()
     }
 }
 
@@ -525,37 +535,42 @@ mod tests {
             );
         }
     }
-}
 
-
-
-mod test {
-    #[test]
-    #[cfg(feature = "chrono-conversions")]
-    fn test_datetime_to_wkt_timestamp() {
+    #[cfg(feature = "time-conversions")]
+    mod time_crate {
         use super::*;
-        use chrono::{Utc, DateTime, TimeZone};
+        use ::time::macros::datetime;
 
-        let date_utc = Utc.ymd(2014, 7, 8).and_hms_nano(9, 10, 11, 12);
-        let ts0: Timestamp = date_utc.into();
-        let expected0 = Timestamp{seconds: 1404810611, nanos: 12};
-        assert_eq!(ts0, expected0);
+        #[test]
+        fn test_datetime_to_timestamp() {
+            // With UTC date
+            let dt = datetime!(2014-07-08 9:10:11.000_000_012 UTC);
+            let ts: Timestamp = dt.into();
+            let expected = Timestamp {
+                seconds: 1404810611,
+                nanos: 12,
+            };
+            assert_eq!(ts, expected);
 
-        let date_6 = DateTime::parse_from_rfc2822("8 Jul 2014 09:10:11 +0600").unwrap();
-        let ts6: Timestamp = date_6.into();
-        let expected6 = Timestamp{seconds: 1404810611 - 6*3600, nanos: 0};
-        assert_eq!(ts6, expected6);
-    }
+            // With non-UTC date
+            let dt = datetime!(2014-07-08 9:10:11 +06);
+            let ts: Timestamp = dt.into();
+            let expected = Timestamp {
+                seconds: 1404810611 - 6 * 3600,
+                nanos: 0,
+            };
+            assert_eq!(ts, expected);
+        }
 
-    #[test]
-    #[cfg(feature = "chrono-conversions")]
-    fn test_wkt_timestamp_to_datetime() {
-        use super::*;
-        use chrono::{Utc, DateTime, TimeZone};
-
-        let ts = Timestamp{seconds: 1404810611, nanos: 12};
-        let expected_date = Utc.ymd(2014, 7, 8).and_hms_nano(9, 10, 11, 12);
-        let date: DateTime<Utc> = ts.into();
-        assert_eq!(date, expected_date);
+        #[test]
+        fn test_timestamp_to_datetime() {
+            let ts = Timestamp {
+                seconds: 1404810611,
+                nanos: 12,
+            };
+            let dt: ::time::OffsetDateTime = ts.into();
+            let expected = datetime!(2014-07-08 9:10:11.000_000_012 UTC);
+            assert_eq!(dt, expected);
+        }
     }
 }
