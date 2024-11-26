@@ -14,10 +14,12 @@ doctest = false
 
 [features]
 default = ["std"]
-std = ["prost/std"]
+time = ["dep:time"]
+std = ["prost/std", "time?/std"]
 
 [dependencies]
 prost = { version = "0.13.1", path = "../prost", default-features = false, features = ["prost-derive"] }
+time = { version = "0.3", default-features = false, optional = true }
 
 [dev-dependencies]
 proptest = "1"
