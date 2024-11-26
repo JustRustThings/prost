@@ -146,6 +146,28 @@ impl From<std::time::SystemTime> for Timestamp {
     }
 }
 
+#[cfg(feature = "time")]
+impl From<::time::OffsetDateTime> for Timestamp {
+    fn from(dt: ::time::OffsetDateTime) -> Self {
+        // The UNIX timestamp is relative to UTC by definition, the time crate respects this.
+        let seconds = dt.unix_timestamp();
+        // `.nanoseconds()` guarantees a return value in 0 .. 1_000_000_000 and so will
+        // always fit in an `i32`.
+        let nanos = dt.nanosecond() as i32;
+        Self { seconds, nanos }
+    }
+}
+
+#[cfg(feature = "time")]
+impl From<Timestamp> for ::time::OffsetDateTime {
+    fn from(ts: Timestamp) -> Self {
+        let ts = ts.seconds as i128 * 1_000_000_000 + ts.nanos as i128;
+        // This cannot fail since the passed value is supposed to be a
+        // valid UTC timestamp itself.
+        Self::from_unix_timestamp_nanos(ts).unwrap()
+    }
+}
+
 /// A timestamp handling error.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
