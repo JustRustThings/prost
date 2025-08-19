@@ -135,7 +135,7 @@ impl<'b> CodeGenerator<'_, 'b> {
             code_gen.package
         );
 
-        if !code_gen.config.service_only {
+        if !code_gen.config().service_only {
             code_gen.path.push(4);
             for (idx, message) in file.message_type.into_iter().enumerate() {
                 code_gen.path.push(idx as i32);
