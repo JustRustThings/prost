@@ -51,6 +51,8 @@ mod type_names;
 
 #[cfg(test)]
 mod boxed_field;
+#[cfg(test)]
+mod wrapped_fields;
 
 #[cfg(test)]
 mod custom_scalar;
