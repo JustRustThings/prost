@@ -3,6 +3,7 @@ mod map;
 mod message;
 mod oneof;
 mod scalar;
+mod wrapped;
 
 use std::fmt;
 use std::slice;
