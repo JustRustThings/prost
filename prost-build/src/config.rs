@@ -25,6 +25,21 @@ use crate::MapType;
 use crate::Module;
 use crate::ServiceGenerator;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Wrapper {
+    Box,
+    Arc,
+}
+
+impl Wrapper {
+    pub(crate) fn as_tag(&self) -> &'static str {
+        match self {
+            Wrapper::Box => "boxed",
+            Wrapper::Arc => "arc",
+        }
+    }
+}
+
 /// Configuration options for Protobuf code generation.
 ///
 /// This configuration builder can be used to set non-default code generation options.
@@ -39,7 +54,7 @@ pub struct Config {
     pub(crate) enum_attributes: PathMap<String>,
     pub(crate) field_attributes: PathMap<String>,
     pub(crate) custom_scalar: PathMap<(Type, String)>,
-    pub(crate) boxed: PathMap<()>,
+    pub(crate) wrapped: PathMap<Wrapper>,
     pub(crate) prost_types: bool,
     pub(crate) strip_enum_prefix: bool,
     pub(crate) out_dir: Option<PathBuf>,
@@ -356,7 +371,33 @@ impl Config {
         self
     }
 
+    /// Wrap matched fields in a the specified wrapper type.
+    ///
+    /// # Arguments
+    ///
+    /// **`path`** - a path matching any number of fields. These fields get the attribute.
+    /// For details about matching fields see [`btree_map`](Self::btree_map).
+    ///
+    /// **`wrapper`** - the wrapper type to use.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # let mut config = prost_build::Config::new();
+    /// config.wrapped_field(".my_messages.MyMessageType.my_field", Wrapper::Box);
+    /// config.wrapped_field(".my_messages.MyMessageType.other_field", Wrapper::Arc);
+    /// ```
+    pub fn wrapped_field<P>(&mut self, path: P, wrapper: Wrapper) -> &mut Self
+    where
+        P: AsRef<str>,
+    {
+        self.wrapped.insert(path.as_ref().to_string(), wrapper);
+        self
+    }
+
     /// Wrap matched fields in a `Box`.
+    ///
+    /// This is a shortcut for `wrapped_field()` with `Wrapper::Box` as last argument.
     ///
     /// # Arguments
     ///
@@ -373,8 +414,29 @@ impl Config {
     where
         P: AsRef<str>,
     {
-        self.boxed.insert(path.as_ref().to_string(), ());
-        self
+        self.wrapped_field(path, Wrapper::Box)
+    }
+
+    /// Wrap matched fields in a `Arc`.
+    ///
+    /// This is a shortcut for `wrapped_field()` with `Wrapper::Arc` as last argument.
+    ///
+    /// # Arguments
+    ///
+    /// **`path`** - a path matching any number of fields. These fields get the attribute.
+    /// For details about matching fields see [`btree_map`](Self::btree_map).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # let mut config = prost_build::Config::new();
+    /// config.arc(".my_messages.MyMessageType.my_field");
+    /// ```
+    pub fn arc<P>(&mut self, path: P) -> &mut Self
+    where
+        P: AsRef<str>,
+    {
+        self.wrapped_field(path, Wrapper::Arc)
     }
 
     pub fn custom_scalar<M, I, S>(
@@ -1221,7 +1283,7 @@ impl default::Default for Config {
             enum_attributes: PathMap::default(),
             field_attributes: PathMap::default(),
             custom_scalar: PathMap::default(),
-            boxed: PathMap::default(),
+            wrapped: PathMap::default(),
             prost_types: true,
             strip_enum_prefix: true,
             out_dir: None,

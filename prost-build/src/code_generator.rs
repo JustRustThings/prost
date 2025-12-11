@@ -15,6 +15,7 @@ use prost_types::{
 };
 
 use crate::ast::{Comments, Method, Service};
+use crate::config::Wrapper;
 use crate::context::Context;
 use crate::ident::{strip_enum_prefix, to_snake, to_upper_camel};
 use crate::Config;
@@ -393,9 +394,9 @@ impl<'b> CodeGenerator<'_, 'b> {
         let repeated = field.descriptor.label() == Label::Repeated;
         let deprecated = self.deprecated(&field.descriptor);
         let optional = self.optional(&field.descriptor);
-        let boxed = self
+        let wrapper = self
             .context
-            .should_box_message_field(fq_message_name, &field.descriptor);
+            .should_wrap_message_field(fq_message_name, &field.descriptor);
         let custom_module_path = self
             .context
             .get_custom_scalar_module_path(&field.descriptor, fq_message_name);
@@ -406,10 +407,10 @@ impl<'b> CodeGenerator<'_, 'b> {
         );
 
         debug!(
-            "    field: {:?}, type: {:?}, boxed: {}",
+            "    field: {:?}, type: {:?}, wrap: {:?}",
             field.descriptor.name(),
             ty,
-            boxed
+            wrapper
         );
 
         self.append_doc(fq_message_name, Some(field.descriptor.name()));
@@ -453,8 +454,9 @@ impl<'b> CodeGenerator<'_, 'b> {
             }
         }
 
-        if boxed {
-            self.buf.push_str(", boxed");
+        if let Some(w) = wrapper {
+            self.buf.push_str(", ");
+            self.buf.push_str(w.as_tag());
         }
 
         self.buf.push_str(", tag=\"");
@@ -506,12 +508,18 @@ impl<'b> CodeGenerator<'_, 'b> {
         } else if optional {
             self.buf.push_str("::core::option::Option<");
         }
-        if boxed {
-            self.buf
-                .push_str(&format!("{}::alloc::boxed::Box<", prost_path));
+        if let Some(w) = wrapper {
+            match w {
+                Wrapper::Box => self
+                    .buf
+                    .push_str(&format!("{}::alloc::boxed::Box<", prost_path)),
+                Wrapper::Arc => self
+                    .buf
+                    .push_str(&format!("{}::alloc::sync::Arc<", prost_path)),
+            }
         }
         self.buf.push_str(&ty);
-        if boxed {
+        if wrapper.is_some() {
             self.buf.push('>');
         }
         if repeated || optional {
@@ -663,31 +671,41 @@ impl<'b> CodeGenerator<'_, 'b> {
                 custom_module_path.as_deref(),
             );
 
-            let boxed = self.context.should_box_oneof_field(
+            let wrapper = self.context.should_wrap_oneof_field(
                 fq_message_name,
                 oneof.descriptor.name(),
                 &field.descriptor,
             );
 
             debug!(
-                "    oneof: {:?}, type: {:?}, boxed: {}",
+                "    oneof: {:?}, type: {:?}, wrapper: {:?}",
                 field.descriptor.name(),
                 ty,
-                boxed
+                wrapper
             );
 
-            if boxed {
-                self.buf.push_str(&format!(
-                    "{}(::prost::alloc::boxed::Box<{}>),\n",
-                    to_upper_camel(field.descriptor.name()),
-                    ty
-                ));
-            } else {
-                self.buf.push_str(&format!(
-                    "{}({}),\n",
-                    to_upper_camel(field.descriptor.name()),
-                    ty
-                ));
+            match wrapper {
+                Some(Wrapper::Box) => {
+                    self.buf.push_str(&format!(
+                        "{}(::prost::alloc::boxed::Box<{}>),\n",
+                        to_upper_camel(field.descriptor.name()),
+                        ty
+                    ));
+                }
+                Some(Wrapper::Arc) => {
+                    self.buf.push_str(&format!(
+                        "{}(::prost::alloc::sync::Arc<{}>),\n",
+                        to_upper_camel(field.descriptor.name()),
+                        ty
+                    ));
+                }
+                None => {
+                    self.buf.push_str(&format!(
+                        "{}({}),\n",
+                        to_upper_camel(field.descriptor.name()),
+                        ty
+                    ));
+                }
             }
         }
         self.depth -= 1;

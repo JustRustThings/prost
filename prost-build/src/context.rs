@@ -5,8 +5,8 @@ use prost_types::{
     FieldDescriptorProto,
 };
 
-use crate::extern_paths::ExternPaths;
 use crate::message_graph::MessageGraph;
+use crate::{config::Wrapper, extern_paths::ExternPaths};
 use crate::{BytesType, Config, MapType, ServiceGenerator};
 
 /// The context providing all the global information needed to generate code.
@@ -108,64 +108,75 @@ impl<'a> Context<'a> {
             .unwrap_or_default()
     }
 
-    /// Returns whether the Rust type for this message field needs to be `Box<_>`.
+    /// Returns whether the Rust type for this message field needs to be wrapped in `Box<_>` or
+    /// `Arc<_>`.
     ///
-    /// This can be explicitly configured with `Config::boxed`, or necessary
+    /// This can be explicitly configured with `Config::wrapped_field`, or necessary
     /// to prevent an infinitely sized type definition in case when the type of
     /// a non-repeated message field transitively contains the message itself.
-    pub fn should_box_message_field(
+    pub fn should_wrap_message_field(
         &self,
         fq_message_name: &str,
         field: &FieldDescriptorProto,
-    ) -> bool {
-        self.should_box_impl(fq_message_name, None, field)
+    ) -> Option<Wrapper> {
+        self.should_wrap_impl(fq_message_name, None, field)
     }
 
-    /// Returns whether the Rust type for this field in the oneof needs to be `Box<_>`.
+    /// Returns whether the Rust type for this field in the oneof needs to be wrapped in `Box<_>`
+    /// or `Arc<_>`.
     ///
-    /// This can be explicitly configured with `Config::boxed`, or necessary
+    /// This can be explicitly configured with `Config::wrapped_field`, or necessary
     /// to prevent an infinitely sized type definition in case when the type of
     /// a non-repeated message field transitively contains the message itself.
-    pub fn should_box_oneof_field(
+    pub fn should_wrap_oneof_field(
         &self,
         fq_message_name: &str,
         oneof_name: &str,
         field: &FieldDescriptorProto,
-    ) -> bool {
-        self.should_box_impl(fq_message_name, Some(oneof_name), field)
+    ) -> Option<Wrapper> {
+        self.should_wrap_impl(fq_message_name, Some(oneof_name), field)
     }
 
-    fn should_box_impl(
+    fn should_wrap_impl(
         &self,
         fq_message_name: &str,
         oneof: Option<&str>,
         field: &FieldDescriptorProto,
-    ) -> bool {
+    ) -> Option<Wrapper> {
         if field.label() == Label::Repeated {
+            // IMPROVE we could support Vec<Arc<T>> or HashMap<Key, Arc<T>>
             // Repeated field are stored in Vec, therefore it is already heap allocated
-            return false;
+            return None;
         }
+        let config_path = match oneof {
+            None => Cow::Borrowed(fq_message_name),
+            Some(oneof_name) => Cow::Owned(format!("{fq_message_name}.{oneof_name}")),
+        };
         let fd_type = field.r#type();
         if (fd_type == Type::Message || fd_type == Type::Group)
             && self
                 .message_graph
                 .is_nested(field.type_name(), fq_message_name)
         {
-            return true;
+            if self
+                .config
+                .wrapped
+                .get_first_field(&config_path, field.name())
+                .is_some_and(|w| *w == Wrapper::Arc)
+            {
+                return Some(Wrapper::Arc);
+            } else {
+                return Some(Wrapper::Box);
+            }
         }
-        let config_path = match oneof {
-            None => Cow::Borrowed(fq_message_name),
-            Some(oneof_name) => Cow::Owned(format!("{fq_message_name}.{oneof_name}")),
-        };
-        if self
+        if let Some(wrapper) = self
             .config
-            .boxed
+            .wrapped
             .get_first_field(&config_path, field.name())
-            .is_some()
         {
-            return true;
+            return Some(*wrapper);
         }
-        false
+        None
     }
 
     pub fn get_custom_scalar_module_path(
@@ -220,7 +231,7 @@ impl<'a> Context<'a> {
             }
             if self
                 .config
-                .boxed
+                .wrapped
                 .get_first_field(fq_message_name, field.name())
                 .is_some()
             {

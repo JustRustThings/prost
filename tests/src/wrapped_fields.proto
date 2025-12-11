@@ -1,0 +1,27 @@
+
+syntax = "proto3";
+
+package wrapped_fields;
+
+message Foo {
+  Bar bar = 1;
+  oneof oneof_field {
+    string baz = 2;
+    Bar box_qux = 3;
+  }
+  repeated Bar boxed_bar_list = 4;
+  optional Bar opt_bar = 5;
+}
+
+message Baz {
+  Bar bar = 1;
+  oneof oneof_field {
+    string baz = 2;
+    Bar box_qux = 3;
+  }
+  repeated Bar boxed_bar_list = 4;
+  optional Bar opt_bar = 5;
+}
+
+message Bar {
+}

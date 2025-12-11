@@ -203,6 +203,18 @@ fn main() {
         .compile_protos(&[src.join("custom_scalar.proto")], includes)
         .unwrap();
 
+    prost_build::Config::new()
+        .boxed("Foo.bar")
+        .boxed("Foo.oneof_field.box_qux")
+        .boxed("Foo.boxed_bar_list")
+        .boxed("Foo.opt_bar")
+        .arc("Baz.bar")
+        .arc("Baz.oneof_field.box_qux")
+        .arc("Baz.boxed_bar_list")
+        .arc("Baz.opt_bar")
+        .compile_protos(&[src.join("wrapped_fields.proto")], includes)
+        .unwrap();
+
     // Check that attempting to compile a .proto without a package declaration does not result in an error.
     config
         .compile_protos(&[src.join("no_package.proto")], includes)
