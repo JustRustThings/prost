@@ -55,6 +55,7 @@ pub struct Config {
     pub(crate) field_attributes: PathMap<String>,
     pub(crate) custom_scalar: PathMap<(Type, String)>,
     pub(crate) wrapped: PathMap<Wrapper>,
+    pub(crate) wrapped_type: PathMap<Wrapper>,
     pub(crate) prost_types: bool,
     pub(crate) strip_enum_prefix: bool,
     pub(crate) out_dir: Option<PathBuf>,
@@ -438,6 +439,29 @@ impl Config {
         P: AsRef<str>,
     {
         self.wrapped_field(path, Wrapper::Arc)
+    }
+
+    /// Wrap all fields of the give type in a the specified wrapper type.
+    ///
+    /// # Arguments
+    ///
+    /// **`path`** - a path matching any number of types.
+    ///
+    /// **`wrapper`** - the wrapper type to use.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # let mut config = prost_build::Config::new();
+    /// config.wrapped_type(".my_module.MyMessageType", Wrapper::Box);
+    /// config.wrapped_type(".my_module.MyOtherMessageType", Wrapper::Arc);
+    /// ```
+    pub fn wrapped_type<P>(&mut self, path: P, wrapper: Wrapper) -> &mut Self
+    where
+        P: AsRef<str>,
+    {
+        self.wrapped_type.insert(path.as_ref().to_string(), wrapper);
+        self
     }
 
     pub fn custom_scalar<M, I, S>(
@@ -1308,6 +1332,7 @@ impl default::Default for Config {
             field_attributes: PathMap::default(),
             custom_scalar: PathMap::default(),
             wrapped: PathMap::default(),
+            wrapped_type: PathMap::default(),
             prost_types: true,
             strip_enum_prefix: true,
             out_dir: None,

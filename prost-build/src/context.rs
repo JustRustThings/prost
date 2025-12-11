@@ -174,6 +174,11 @@ impl<'a> Context<'a> {
                 .wrapped
                 .get_first_field(&config_path, field.name())
                 .is_some_and(|w| *w == Wrapper::Arc)
+                || self
+                    .config
+                    .wrapped_type
+                    .get_first_field(field.type_name(), field.name())
+                    .is_some_and(|w| *w == Wrapper::Arc)
             {
                 return Some(Wrapper::Arc);
             } else {
@@ -184,6 +189,13 @@ impl<'a> Context<'a> {
             .config
             .wrapped
             .get_first_field(&config_path, field.name())
+        {
+            return Some(*wrapper);
+        }
+        if let Some(wrapper) = self
+            .config
+            .wrapped_type
+            .get_first_field(field.type_name(), field.name())
         {
             return Some(*wrapper);
         }
