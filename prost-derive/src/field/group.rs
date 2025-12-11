@@ -3,7 +3,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{Meta, Path};
 
-use crate::field::{set_bool, set_option, tag_attr, word_attr, Label};
+use crate::field::{set_bool, set_option, tag_attr, word_attr, wrapped::wrapper_attr, Label};
 
 #[derive(Clone)]
 pub struct Field {
@@ -16,15 +16,19 @@ impl Field {
         let mut group = false;
         let mut label = None;
         let mut tag = None;
-        let mut boxed = false;
+        let mut wrapper = None;
 
         let mut unknown_attrs = Vec::new();
 
         for attr in attrs {
             if word_attr("group", attr) {
                 set_bool(&mut group, "duplicate group attributes")?;
-            } else if word_attr("boxed", attr) {
-                set_bool(&mut boxed, "duplicate boxed attributes")?;
+            } else if let Some(w) = wrapper_attr(attr) {
+                set_option(
+                    &mut wrapper,
+                    w,
+                    "duplicate wrapper attributes (boxed or arc)",
+                )?;
             } else if let Some(t) = tag_attr(attr)? {
                 set_option(&mut tag, t, "duplicate tag attributes")?;
             } else if let Some(l) = Label::from_attr(attr) {
