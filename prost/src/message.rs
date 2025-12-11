@@ -177,6 +177,30 @@ where
     }
 }
 
+impl<M> Message for alloc::sync::Arc<M>
+where
+    M: Message + Clone + Default,
+{
+    fn encode_raw(&self, buf: &mut impl BufMut) {
+        (**self).encode_raw(buf)
+    }
+    fn merge_field(
+        &mut self,
+        tag: u32,
+        wire_type: WireType,
+        buf: &mut impl Buf,
+        ctx: DecodeContext,
+    ) -> Result<(), DecodeError> {
+        alloc::sync::Arc::make_mut(self).merge_field(tag, wire_type, buf, ctx)
+    }
+    fn encoded_len(&self) -> usize {
+        (**self).encoded_len()
+    }
+    fn clear(&mut self) {
+        *self = alloc::sync::Arc::new(M::default());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
