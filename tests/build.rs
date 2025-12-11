@@ -12,6 +12,8 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+use prost_build::Wrapper;
+
 fn main() {
     env_logger::init();
 
@@ -208,10 +210,12 @@ fn main() {
         .boxed("Foo.oneof_field.box_qux")
         .boxed("Foo.boxed_bar_list")
         .boxed("Foo.opt_bar")
+        .wrapped_type(".wrapped_fields.BigBar", Wrapper::Box)
         .arc("Baz.bar")
         .arc("Baz.oneof_field.box_qux")
         .arc("Baz.boxed_bar_list")
         .arc("Baz.opt_bar")
+        .wrapped_type(".wrapped_fields.BigBaz", Wrapper::Arc)
         .compile_protos(&[src.join("wrapped_fields.proto")], includes)
         .unwrap();
 

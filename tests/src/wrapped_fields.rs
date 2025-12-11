@@ -12,6 +12,7 @@ fn test_boxed_field() {
         oneof_field: Some(OneofField::BoxQux(Box::new(Bar {}))),
         boxed_bar_list: Vec::from([Bar {}]),
         opt_bar: Some(Box::new(Bar {})),
+        big_bar: Some(Box::new(BigBar {})),
     };
     let _ = Foo {
         oneof_field: Some(OneofField::Baz("hello".into())),
@@ -31,6 +32,7 @@ fn test_arc_field() {
         oneof_field: Some(OneofField::BoxQux(Arc::new(Bar {}))),
         boxed_bar_list: Vec::from([Bar {}]),
         opt_bar: Some(Arc::new(Bar {})),
+        big_baz: Some(Arc::new(BigBaz {})),
     };
     let _ = Baz {
         oneof_field: Some(OneofField::Baz("hello".into())),
