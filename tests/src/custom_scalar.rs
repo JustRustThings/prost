@@ -25,6 +25,7 @@ fn test_custom_scalar() {
             .iter()
             .cloned()
             .collect(),
+        h: MyVec(vec![1, 2]),
     };
 
     let data = msg.encode_to_vec();
@@ -67,6 +68,44 @@ impl prost::CustomScalarInterface for MyStringInterface {
         match value {
             Some(ref value) => value.0.as_str(),
             None => "",
+        }
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
+pub struct MyVec(pub Vec<u8>);
+
+struct MyVecInterface;
+
+impl prost::CustomScalarInterface for MyVecInterface {
+    type Type = MyVec;
+    type RefType<'x> = &'x [u8];
+
+    fn encoded_len(tag: u32, value: &Self::Type) -> usize {
+        ::prost::encoding::bytes::encoded_len(tag, &value.0)
+    }
+
+    fn encode(tag: u32, value: &Self::Type, buf: &mut impl prost::bytes::BufMut) {
+        ::prost::encoding::bytes::encode(tag, &value.0, buf);
+    }
+
+    fn merge(
+        wire_type: prost::encoding::WireType,
+        value: &mut Self::Type,
+        buf: &mut impl prost::bytes::Buf,
+        ctx: prost::encoding::DecodeContext,
+    ) -> Result<(), prost::DecodeError> {
+        ::prost::encoding::bytes::merge(wire_type, &mut value.0, buf, ctx)
+    }
+
+    fn is_default(value: &Self::Type) -> bool {
+        value.0.is_empty()
+    }
+
+    fn get<'x>(value: &'x Option<Self::Type>) -> Self::RefType<'x> {
+        match value {
+            Some(ref value) => value.0.as_slice(),
+            None => &[],
         }
     }
 }
