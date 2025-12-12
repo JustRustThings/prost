@@ -176,6 +176,27 @@ fn main() {
         .compile_protos(&[src.join("boxed_field.proto")], includes)
         .unwrap();
 
+    prost_build::Config::new()
+        .btree_map([
+            ".custom_scalar.Msg.e",
+            ".custom_scalar.Msg.f",
+            ".custom_scalar.Msg.g",
+        ])
+        .custom_scalar(
+            "crate::custom_scalar::MyStringInterface",
+            [
+                ".custom_scalar.Msg.a",
+                ".custom_scalar.Msg.b",
+                ".custom_scalar.Msg.c",
+                ".custom_scalar.Msg.d",
+                ".custom_scalar.Msg.e",
+                ".custom_scalar.Msg.f.value",
+                ".custom_scalar.Msg.g.key",
+            ],
+        )
+        .compile_protos(&[src.join("custom_scalar.proto")], includes)
+        .unwrap();
+
     // Check that attempting to compile a .proto without a package declaration does not result in an error.
     config
         .compile_protos(&[src.join("no_package.proto")], includes)
