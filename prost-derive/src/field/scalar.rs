@@ -84,6 +84,7 @@ impl Field {
                 Kind::Packed
             }
             (Some(Label::Repeated), _, false) => Kind::Repeated,
+            // TODO support packable custom scalar ?
         };
 
         Ok(Some(Field { ty, kind, tag }))
@@ -106,20 +107,28 @@ impl Field {
     }
 
     pub fn encode(&self, ident: TokenStream) -> TokenStream {
-        let module = self.ty.module();
+        let module = self.ty.encoding_module();
         let encode_fn = match self.kind {
             Kind::Plain(..) | Kind::Optional(..) | Kind::Required(..) => quote!(encode),
             Kind::Repeated => quote!(encode_repeated),
             Kind::Packed => quote!(encode_packed),
         };
-        let encode_fn = quote!(::prost::encoding::#module::#encode_fn);
+        let encode_fn = quote!(#module::#encode_fn);
         let tag = self.tag;
 
         match self.kind {
             Kind::Plain(ref default) => {
-                let default = default.typed();
+                let default_check = match self.ty {
+                    Ty::CustomScalar(ref path) => {
+                        quote!(!<#path as ::prost::encoding::CustomScalarInterface>::is_default(&#ident))
+                    }
+                    _ => {
+                        let default = default.typed();
+                        quote!(#ident != #default)
+                    }
+                };
                 quote! {
-                    if #ident != #default {
+                    if #default_check {
                         #encode_fn(#tag, &#ident, buf);
                     }
                 }
@@ -138,12 +147,12 @@ impl Field {
     /// Returns an expression which evaluates to the result of merging a decoded
     /// scalar value into the field.
     pub fn merge(&self, ident: TokenStream) -> TokenStream {
-        let module = self.ty.module();
+        let module = self.ty.encoding_module();
         let merge_fn = match self.kind {
             Kind::Plain(..) | Kind::Optional(..) | Kind::Required(..) => quote!(merge),
             Kind::Repeated | Kind::Packed => quote!(merge_repeated),
         };
-        let merge_fn = quote!(::prost::encoding::#module::#merge_fn);
+        let merge_fn = quote!(#module::#merge_fn);
 
         match self.kind {
             Kind::Plain(..) | Kind::Required(..) | Kind::Repeated | Kind::Packed => quote! {
@@ -160,20 +169,28 @@ impl Field {
 
     /// Returns an expression which evaluates to the encoded length of the field.
     pub fn encoded_len(&self, ident: TokenStream) -> TokenStream {
-        let module = self.ty.module();
+        let module = self.ty.encoding_module();
         let encoded_len_fn = match self.kind {
             Kind::Plain(..) | Kind::Optional(..) | Kind::Required(..) => quote!(encoded_len),
             Kind::Repeated => quote!(encoded_len_repeated),
             Kind::Packed => quote!(encoded_len_packed),
         };
-        let encoded_len_fn = quote!(::prost::encoding::#module::#encoded_len_fn);
+        let encoded_len_fn = quote!(#module::#encoded_len_fn);
         let tag = self.tag;
 
         match self.kind {
             Kind::Plain(ref default) => {
-                let default = default.typed();
+                let default_check = match self.ty {
+                    Ty::CustomScalar(ref path) => {
+                        quote!(!<#path as ::prost::encoding::CustomScalarInterface>::is_default(&#ident))
+                    }
+                    _ => {
+                        let default = default.typed();
+                        quote!(#ident != #default)
+                    }
+                };
                 quote! {
-                    if #ident != #default {
+                    if #default_check {
                         #encoded_len_fn(#tag, &#ident)
                     } else {
                         0
@@ -353,28 +370,42 @@ impl Field {
                 }
             })
         } else if let Kind::Optional(ref default) = self.kind {
-            let ty = self.ty.rust_ref_type();
+            if let Ty::CustomScalar(ref path) = self.ty {
+                let get_doc = format!(
+                    "Returns the value of `{0}`, or the default value if `{0}` is unset.",
+                    ident_str,
+                );
 
-            let match_some = if self.ty.is_numeric() {
-                quote!(::core::option::Option::Some(val) => val,)
-            } else {
-                quote!(::core::option::Option::Some(ref val) => &val[..],)
-            };
-
-            let get_doc = format!(
-                "Returns the value of `{0}`, or the default value if `{0}` is unset.",
-                ident_str,
-            );
-
-            Some(quote! {
-                #[doc=#get_doc]
-                pub fn #get(&self) -> #ty {
-                    match self.#ident {
-                        #match_some
-                        ::core::option::Option::None => #default,
+                Some(quote! {
+                    #[doc=#get_doc]
+                    pub fn #get<'x>(&'x self) -> <#path as ::prost::encoding::CustomScalarInterface>::RefType<'x> {
+                        <#path as ::prost::encoding::CustomScalarInterface>::get(&self.#ident)
                     }
-                }
-            })
+                })
+            } else {
+                let ty = self.ty.rust_ref_type();
+
+                let match_some = if self.ty.is_numeric() {
+                    quote!(::core::option::Option::Some(val) => val,)
+                } else {
+                    quote!(::core::option::Option::Some(ref val) => &val[..],)
+                };
+
+                let get_doc = format!(
+                    "Returns the value of `{0}`, or the default value if `{0}` is unset.",
+                    ident_str,
+                );
+
+                Some(quote! {
+                    #[doc=#get_doc]
+                    pub fn #get(&self) -> #ty {
+                        match self.#ident {
+                            #match_some
+                            ::core::option::Option::None => #default,
+                        }
+                    }
+                })
+            }
         } else {
             None
         }
@@ -400,6 +431,7 @@ pub enum Ty {
     String,
     Bytes(BytesTy),
     Enumeration(Path),
+    CustomScalar(Path),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -464,6 +496,9 @@ impl Ty {
             Meta::List(ref meta_list) if meta_list.path.is_ident("enumeration") => {
                 Ty::Enumeration(meta_list.parse_args::<Path>()?)
             }
+            Meta::List(ref meta_list) if meta_list.path.is_ident("custom_scalar") => {
+                Ty::CustomScalar(meta_list.parse_args::<Path>()?)
+            }
             _ => return Ok(None),
         };
         Ok(Some(ty))
@@ -471,6 +506,7 @@ impl Ty {
 
     pub fn from_str(s: &str) -> Result<Ty, Error> {
         let enumeration_len = "enumeration".len();
+        let custom_scalar_len = "custom_scalar".len();
         let error = Err(anyhow!("invalid type: {}", s));
         let ty = match s.trim() {
             "float" => Ty::Float,
@@ -501,6 +537,19 @@ impl Ty {
 
                 Ty::Enumeration(parse_str::<Path>(s[1..s.len() - 1].trim())?)
             }
+            s if s.len() > custom_scalar_len && &s[..custom_scalar_len] == "custom_scalar" => {
+                let s = &s[custom_scalar_len..].trim();
+                match s.chars().next() {
+                    Some('(') => (),
+                    _ => return error,
+                }
+                match s.chars().next_back() {
+                    Some(')') => (),
+                    _ => return error,
+                }
+
+                Ty::CustomScalar(parse_str::<Path>(s[1..s.len() - 1].trim())?)
+            }
             _ => return error,
         };
         Ok(ty)
@@ -525,6 +574,8 @@ impl Ty {
             Ty::String => "string",
             Ty::Bytes(..) => "bytes",
             Ty::Enumeration(..) => "enum",
+            // should not be used
+            Ty::CustomScalar(..) => "custom_scalar",
         }
     }
 
@@ -533,6 +584,9 @@ impl Ty {
         match self {
             Ty::String => quote!(::prost::alloc::string::String),
             Ty::Bytes(ty) => ty.rust_type(),
+            Ty::CustomScalar(ref path) => {
+                quote!(<#path as ::prost::CustomScalarInterface>::Type)
+            }
             _ => self.rust_ref_type(),
         }
     }
@@ -556,19 +610,31 @@ impl Ty {
             Ty::String => quote!(&str),
             Ty::Bytes(..) => quote!(&[u8]),
             Ty::Enumeration(..) => quote!(i32),
+            Ty::CustomScalar(ref path) => {
+                quote!(&<#path as ::prost::CustomScalarInterface>::Type)
+            }
         }
     }
 
-    pub fn module(&self) -> Ident {
+    pub fn encoding_module(&self) -> TokenStream {
         match *self {
-            Ty::Enumeration(..) => Ident::new("int32", Span::call_site()),
-            _ => Ident::new(self.as_str(), Span::call_site()),
+            Ty::Enumeration(..) => {
+                let module = Ident::new("int32", Span::call_site());
+                quote!(::prost::encoding::#module)
+            }
+            Ty::CustomScalar(ref path) => {
+                quote!(<#path as ::prost::CustomScalarInterface>)
+            }
+            _ => {
+                let module = Ident::new(self.as_str(), Span::call_site());
+                quote!(::prost::encoding::#module)
+            }
         }
     }
 
     /// Returns false if the scalar type is length delimited (i.e., `string` or `bytes`).
     pub fn is_numeric(&self) -> bool {
-        !matches!(self, Ty::String | Ty::Bytes(..))
+        !matches!(self, Ty::String | Ty::Bytes(..) | Ty::CustomScalar(..))
     }
 }
 
@@ -613,6 +679,7 @@ pub enum DefaultValue {
     Bytes(Vec<u8>),
     Enumeration(TokenStream),
     Path(Path),
+    CustomScalar,
 }
 
 impl DefaultValue {
@@ -776,6 +843,7 @@ impl DefaultValue {
             Ty::String => DefaultValue::String(String::new()),
             Ty::Bytes(..) => DefaultValue::Bytes(Vec::new()),
             Ty::Enumeration(ref path) => DefaultValue::Enumeration(quote!(#path::default())),
+            Ty::CustomScalar(_) => DefaultValue::CustomScalar,
         }
     }
 
@@ -823,6 +891,9 @@ impl ToTokens for DefaultValue {
             }
             DefaultValue::Enumeration(ref value) => value.to_tokens(tokens),
             DefaultValue::Path(ref value) => value.to_tokens(tokens),
+            DefaultValue::CustomScalar => {
+                tokens.append_all(quote!(::core::default::Default::default()))
+            }
         }
     }
 }
