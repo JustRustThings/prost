@@ -431,7 +431,7 @@ impl<'b> CodeGenerator<'_, 'b> {
         let ty = self.resolve_type(
             &field.descriptor,
             fq_message_name,
-            custom_module_path.as_deref(),
+            custom_module_path.as_ref(),
         );
 
         debug!(
@@ -450,7 +450,7 @@ impl<'b> CodeGenerator<'_, 'b> {
 
         self.push_indent();
         self.buf.push_str("#[prost(");
-        let type_tag = self.field_type_tag(&field.descriptor, custom_module_path.as_deref());
+        let type_tag = self.field_type_tag(&field.descriptor, custom_module_path.as_ref());
         self.buf.push_str(&type_tag);
 
         if type_ == Type::Bytes && custom_module_path.is_none() {
@@ -567,9 +567,8 @@ impl<'b> CodeGenerator<'_, 'b> {
         let custom_module_path_value = self
             .context
             .get_custom_scalar_module_path(value, &field_name);
-        let key_ty = self.resolve_type(key, fq_message_name, custom_module_path_key.as_deref());
-        let value_ty =
-            self.resolve_type(value, fq_message_name, custom_module_path_value.as_deref());
+        let key_ty = self.resolve_type(key, fq_message_name, custom_module_path_key.as_ref());
+        let value_ty = self.resolve_type(value, fq_message_name, custom_module_path_value.as_ref());
 
         debug!(
             "    map field: {:?}, key type: {:?}, value type: {:?}",
@@ -584,8 +583,8 @@ impl<'b> CodeGenerator<'_, 'b> {
         let map_type = self
             .context
             .map_type(fq_message_name, field.descriptor.name());
-        let key_tag = self.field_type_tag(key, custom_module_path_key.as_deref());
-        let value_tag = self.map_value_type_tag(value, custom_module_path_value.as_deref());
+        let key_tag = self.field_type_tag(key, custom_module_path_key.as_ref());
+        let value_tag = self.map_value_type_tag(value, custom_module_path_value.as_ref());
 
         self.buf.push_str(&format!(
             "#[prost({} = \"{}, {}\", tag = \"{}\")]\n",
@@ -697,7 +696,7 @@ impl<'b> CodeGenerator<'_, 'b> {
             let custom_module_path = self
                 .context
                 .get_custom_scalar_module_path(&field.descriptor, fq_message_name);
-            let ty_tag = self.field_type_tag(&field.descriptor, custom_module_path.as_deref());
+            let ty_tag = self.field_type_tag(&field.descriptor, custom_module_path.as_ref());
             self.buf.push_str(&format!(
                 "#[prost({}, tag = \"{}\")]\n",
                 ty_tag,
@@ -709,7 +708,7 @@ impl<'b> CodeGenerator<'_, 'b> {
             let ty = self.resolve_type(
                 &field.descriptor,
                 fq_message_name,
-                custom_module_path.as_deref(),
+                custom_module_path.as_ref(),
             );
 
             let wrapper = self.context.should_wrap_oneof_field(
@@ -1031,14 +1030,10 @@ impl<'b> CodeGenerator<'_, 'b> {
         &self,
         field: &FieldDescriptorProto,
         fq_message_name: &str,
-        custom_scalar_module_path: Option<&str>,
+        custom_scalar_module_path: Option<&(String, String)>,
     ) -> String {
-        if let Some(module_path) = custom_scalar_module_path {
-            return format!(
-                "<{} as {}::encoding::CustomScalarInterface>::Type",
-                module_path,
-                self.context.prost_path()
-            );
+        if let Some((_module_path, ftype)) = custom_scalar_module_path {
+            return ftype.clone();
         }
 
         match field.r#type() {
@@ -1101,9 +1096,9 @@ impl<'b> CodeGenerator<'_, 'b> {
     fn field_type_tag(
         &self,
         field: &FieldDescriptorProto,
-        custom_scalar_module_path: Option<&str>,
+        custom_scalar_module_path: Option<&(String, String)>,
     ) -> Cow<'static, str> {
-        if let Some(module_path) = custom_scalar_module_path {
+        if let Some((module_path, _)) = custom_scalar_module_path {
             return Cow::Owned(format!("custom_scalar({})", module_path));
         }
         match field.r#type() {
@@ -1134,9 +1129,9 @@ impl<'b> CodeGenerator<'_, 'b> {
     fn map_value_type_tag(
         &self,
         field: &FieldDescriptorProto,
-        custom_scalar_module_path: Option<&str>,
+        custom_scalar_module_path: Option<&(String, String)>,
     ) -> Cow<'static, str> {
-        if let Some(module_path) = custom_scalar_module_path {
+        if let Some((module_path, _)) = custom_scalar_module_path {
             return Cow::Owned(format!("custom_scalar({})", module_path));
         }
         match field.r#type() {

@@ -192,6 +192,7 @@ fn main() {
         .custom_scalar(
             prost_types::field_descriptor_proto::Type::String,
             "crate::custom_scalar::MyStringInterface",
+            "crate::custom_scalar::MyString",
             [
                 ".custom_scalar.Msg.a",
                 ".custom_scalar.Msg.b",
@@ -205,6 +206,7 @@ fn main() {
         .custom_scalar(
             prost_types::field_descriptor_proto::Type::Bytes,
             "crate::custom_scalar::MyVecInterface",
+            "crate::custom_scalar::MyVec",
             [".custom_scalar.Msg.h"],
         )
         .compile_protos(&[src.join("custom_scalar.proto")], includes)
