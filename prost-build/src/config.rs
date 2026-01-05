@@ -53,7 +53,7 @@ pub struct Config {
     pub(crate) message_attributes: PathMap<String>,
     pub(crate) enum_attributes: PathMap<String>,
     pub(crate) field_attributes: PathMap<String>,
-    pub(crate) custom_scalar: PathMap<(Type, String)>,
+    pub(crate) custom_scalar: PathMap<(Type, String, String)>,
     pub(crate) wrapped: PathMap<Wrapper>,
     pub(crate) wrapped_type: PathMap<Wrapper>,
     pub(crate) prost_types: bool,
@@ -467,6 +467,7 @@ impl Config {
         &mut self,
         proto_type: Type,
         module_path: M,
+        field_type: &str,
         paths: I,
     ) -> &mut Self
     where
@@ -477,7 +478,11 @@ impl Config {
         for matcher in paths {
             self.custom_scalar.insert(
                 matcher.as_ref().to_string(),
-                (proto_type, module_path.as_ref().to_string()),
+                (
+                    proto_type,
+                    module_path.as_ref().to_string(),
+                    field_type.to_string(),
+                ),
             );
         }
         self

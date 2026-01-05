@@ -195,16 +195,16 @@ impl<'a> Context<'a> {
         &self,
         field: &FieldDescriptorProto,
         fq_message_name: &str,
-    ) -> Option<String> {
+    ) -> Option<(String, String)> {
         if matches!(field.r#type(), Type::Message | Type::Group) {
             return None;
         }
         self.config
             .custom_scalar
             .get_first_field(fq_message_name, field.name())
-            .and_then(|(ty, interface)| {
+            .and_then(|(ty, interface, ftype)| {
                 if field.r#type() == *ty {
-                    Some(interface.clone())
+                    Some((interface.clone(), ftype.clone()))
                 } else {
                     None
                 }
