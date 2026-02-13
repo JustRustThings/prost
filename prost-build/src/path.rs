@@ -62,6 +62,13 @@ impl<T> PathMap<T> {
                 .map(|(_, v)| v)
         })
     }
+
+    pub(crate) fn find(&self, full_path: &str) -> Option<&T> {
+        self.matchers
+            .iter()
+            .find(|(p, _)| p == full_path)
+            .map(|(_, v)| v)
+    }
 }
 
 /// Iterator inside a PathMap that only returns values that matches a given path

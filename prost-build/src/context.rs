@@ -166,7 +166,7 @@ impl<'a> Context<'a> {
                 || self
                     .config
                     .wrapped_type
-                    .get_first_field(field.type_name(), field.name())
+                    .find(field.type_name())
                     .is_some_and(|w| *w == Wrapper::Arc)
             {
                 return Some(Wrapper::Arc);
@@ -181,11 +181,7 @@ impl<'a> Context<'a> {
         {
             return Some(*wrapper);
         }
-        if let Some(wrapper) = self
-            .config
-            .wrapped_type
-            .get_first_field(field.type_name(), field.name())
-        {
+        if let Some(wrapper) = self.config.wrapped_type.find(field.type_name()) {
             return Some(*wrapper);
         }
         None
