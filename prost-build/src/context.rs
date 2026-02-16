@@ -143,11 +143,16 @@ impl<'a> Context<'a> {
         oneof: Option<&str>,
         field: &FieldDescriptorProto,
     ) -> Option<Wrapper> {
-        if field.label() == Label::Repeated {
-            // IMPROVE we could support Vec<Arc<T>> or HashMap<Key, Arc<T>>
-            // Repeated field are stored in Vec, therefore it is already heap allocated
-            return None;
-        }
+        let is_repeated = field.label() == Label::Repeated;
+        let validate_wrapper = |wrapper: Wrapper| {
+            // we allow arc inside reapeated field
+            if !is_repeated || wrapper == Wrapper::Arc {
+                Some(wrapper)
+            } else {
+                None
+            }
+        };
+
         let config_path = match oneof {
             None => Cow::Borrowed(fq_message_name),
             Some(oneof_name) => Cow::Owned(format!("{fq_message_name}.{oneof_name}")),
@@ -169,9 +174,9 @@ impl<'a> Context<'a> {
                     .find(field.type_name())
                     .is_some_and(|w| *w == Wrapper::Arc)
             {
-                return Some(Wrapper::Arc);
+                return validate_wrapper(Wrapper::Arc);
             } else {
-                return Some(Wrapper::Box);
+                return validate_wrapper(Wrapper::Box);
             }
         }
         if let Some(wrapper) = self
@@ -179,10 +184,10 @@ impl<'a> Context<'a> {
             .wrapped
             .get_first_field(&config_path, field.name())
         {
-            return Some(*wrapper);
+            return validate_wrapper(*wrapper);
         }
         if let Some(wrapper) = self.config.wrapped_type.find(field.type_name()) {
-            return Some(*wrapper);
+            return validate_wrapper(*wrapper);
         }
         None
     }
