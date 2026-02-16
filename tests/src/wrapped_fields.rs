@@ -30,7 +30,7 @@ fn test_arc_field() {
     let baz = Baz {
         bar: Some(Arc::new(Bar {})),
         oneof_field: Some(OneofField::BoxQux(Arc::new(Bar {}))),
-        boxed_bar_list: Vec::from([Bar {}]),
+        boxed_bar_list: Vec::from([Arc::new(Bar {})]),
         opt_bar: Some(Arc::new(Bar {})),
         big_baz: Some(Arc::new(BigBaz {})),
     };
